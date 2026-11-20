@@ -1,0 +1,26 @@
+{
+  "name": "karthik-map-desktop",
+  "version": "1.0.0",
+  "description": "Karthik Map — desktop app (Windows, macOS, Linux)",
+  "author": "Karthik",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --publish never"
+  },
+  "devDependencies": {
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "com.karthik.map",
+    "productName": "Karthik Map",
+    "directories": { "output": "dist" },
+    "files": ["main.js", "preload.js", "offline.html", "setup.html", "config.json", "build/icon.png"],
+    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "icon": "build/icon.ico" },
+    "nsis": { "oneClick": true, "perMachine": false, "createDesktopShortcut": true, "createStartMenuShortcut": true, "artifactName": "Karthik-Map-Setup.${ext}" },
+    "mac": { "target": ["dmg"], "category": "public.app-category.navigation", "icon": "build/icon.png", "artifactName": "Karthik-Map.${ext}" },
+    "linux": { "target": ["AppImage"], "category": "Utility", "icon": "build/icon.png", "artifactName": "Karthik-Map.${ext}" }
+  }
+}
