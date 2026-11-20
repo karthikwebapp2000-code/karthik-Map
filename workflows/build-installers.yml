@@ -1,0 +1,97 @@
+# Builds easy installers for Karthik Map in the cloud — nothing to install on your own computer:
+#   • Windows installer  → Karthik-Map-Setup.exe
+#   • Android app        → Karthik-Map.apk
+#   • macOS app          → Karthik-Map.dmg   (unsigned)
+#   • Linux app          → Karthik-Map.AppImage
+# They are thin native shells around your deployed website, so website and apps are always the same version.
+#
+# HOW TO USE
+#  1) Deploy /frontend (Vercel etc.) and copy its https address.
+#  2) GitHub repo → Settings → Secrets and variables → Actions → Variables → New variable:  APP_URL = https://your-site
+#  3) Actions tab → "Build installers" → Run workflow.  Download the files from the finished run ("Artifacts").
+#  4) To publish a download page for everyone: push a tag such as v1.0.0 — the files are attached to a GitHub Release automatically.
+name: Build installers
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      APP_URL: ${{ vars.APP_URL }}
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Check APP_URL
+        shell: bash
+        run: |
+          if [ -z "$APP_URL" ]; then echo "Set the APP_URL repository variable first (see the top of this file)"; exit 1; fi
+      - name: Write site address into the app
+        shell: bash
+        run: |
+          node -e "require('fs').writeFileSync('desktop/config.json', JSON.stringify({appUrl: process.env.APP_URL}))"
+      - name: Build installer
+        shell: bash
+        working-directory: desktop
+        run: |
+          npm install
+          npx electron-builder --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: |
+            desktop/dist/*.exe
+            desktop/dist/*.dmg
+            desktop/dist/*.AppImage
+          if-no-files-found: error
+  android:
+    runs-on: ubuntu-latest
+    env:
+      APP_URL: ${{ vars.APP_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - name: Check APP_URL
+        run: |
+          if [ -z "$APP_URL" ]; then echo "Set the APP_URL repository variable first"; exit 1; fi
+      - name: Add the Android project
+        working-directory: mobile
+        run: |
+          npm install
+          sed -i "s#https://REPLACE-WITH-YOUR-DEPLOYED-URL#$APP_URL#" capacitor.config.json
+          npx cap add android
+          npx cap sync android
+      - name: Add location, camera and microphone permissions
+        working-directory: mobile/android/app/src/main
+        run: |
+          sed -i 's#<application#<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <application#' AndroidManifest.xml
+      - name: Build APK
+        working-directory: mobile/android
+        run: ./gradlew assembleDebug
+      - name: Rename
+        run: cp mobile/android/app/build/outputs/apk/debug/app-debug.apk Karthik-Map.apk
+      - uses: actions/upload-artifact@v4
+        with: { name: android-apk, path: Karthik-Map.apk }
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [desktop, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: artifacts }
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
